@@ -1,0 +1,195 @@
+lucene版本，这个是maven配置文件中的方式
+<dependency>
+  <groupId>org.eclipse.birt.runtime</groupId>
+  <artifactId>org.apache.lucene.core</artifactId>
+  <version>3.5.0.v20120725-1805</version>
+</dependency>
+一个基本的思路就是，把搜索的过程当做一个往数据库添加一行数据的过程。
+将目标文本或内容封装为一个document。然后进行indexwriter，完成对内容的索引。
+
+New Field()就是字段名，需要哪些字段，就声明出来。通过document.add加入。
+
+Document
+Document 是用来描述文档的，这里的文档可以指一个 HTML 页面，一封电子邮件，或者是一个文本文件。一个 Document 对象由多个 Field 对象组成的。可以把一个 Document 对象想象成数据库中的一个记录，而每个 Field 对象就是记录的一个字段。
+Field
+Field 对象是用来描述一个文档的某个属性的，比如一封电子邮件的标题和内容可以用两个 Field 对象分别描述。
+Analyzer
+在一个文档被索引之前，首先需要对文档内容进行分词处理，这部分工作就是由 Analyzer 来做的。Analyzer 类是一个抽象类，它有多个实现。针对不同的语言和应用需要选择适合的 Analyzer。Analyzer 把分词后的内容交给 IndexWriter 来建立索引。
+IndexWriter
+IndexWriter 是 Lucene 用来创建索引的一个核心的类，他的作用是把一个个的 Document 对象加到索引中来。
+Directory
+这个类代表了 Lucene 的索引的存储的位置，这是一个抽象类，它目前有两个实现，第一个是 FSDirectory，它表示一个存储在文件系统中的索引的位置。第二个是 RAMDirectory，它表示一个存储在内存当中的索引的位置
+
+
+package com.roncoo.example.lucene;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.util.Version; 
+/** 
+* This class demonstrate the process of creating index with Lucene 
+* for text files 
+*/ 
+public class TxtFileIndexer { 
+     public static void main(String[] args) throws Exception{ 
+     //indexDir is the directory that hosts Lucene's index files 
+     File indexDir = new File("D:\\lucene\\luceneIndex"); 
+     //索引文件的存放位置，由子类获取真实路径  
+     Directory directory = FSDirectory.open(indexDir);  
+     //dataDir is the directory that hosts the text files that to be indexed 
+     File dataDir  = new File("D:\\lucene\\luceneData"); 
+     Analyzer luceneAnalyzer = new StandardAnalyzer(Version.LUCENE_35); 
+     File[] dataFiles  = dataDir.listFiles(); 
+     IndexWriterConfig iwc = new IndexWriterConfig(Version.LUCENE_35,  
+             luceneAnalyzer);  
+     iwc.setOpenMode(OpenMode.CREATE); 
+     IndexWriter indexWriter = new IndexWriter(directory, iwc); 
+     long startTime = new Date().getTime(); 
+     for(int i = 0; i < dataFiles.length; i++){ 
+          if(dataFiles[i].isFile() && dataFiles[i].getName().endsWith(".txt")){
+               List<String> lines = new ArrayList<String>();
+               String fileName = dataFiles[i].getName();
+               System.out.println("Indexing file " + dataFiles[i].getCanonicalPath()); 
+               Document document = new Document(); 
+               BufferedReader txtReader = new BufferedReader(new InputStreamReader(new FileInputStream(dataFiles[i]), "GBK")); 
+               String str = "";
+               while ((str = txtReader.readLine()) != null) {
+                   lines.add(str);
+               }
+               txtReader.close();
+               document.add(new Field("path",dataFiles[i].getCanonicalPath().toString(),Field.Store.YES,Field.Index.ANALYZED));
+               document.add(new Field("fileName",fileName,Field.Store.YES,Field.Index.ANALYZED));
+               document.add(new Field("fileName1",fileName.substring(0, fileName.lastIndexOf(".")),Field.Store.YES,Field.Index.ANALYZED));
+               document.add(new Field("fileType",fileName.substring(fileName.lastIndexOf(".") + 1),Field.Store.YES,Field.Index.ANALYZED));
+               document.add(new Field("contents",lines.toString(),Field.Store.YES, Field.Index.ANALYZED));
+               document.add(new Field("authority","hubo" + i,Field.Store.YES, Field.Index.ANALYZED)); 
+               indexWriter.addDocument(document); 
+          } 
+     } 
+     indexWriter.close(); 
+     long endTime = new Date().getTime(); 
+         
+     System.out.println("It takes " + (endTime - startTime) 
+         + " milliseconds to create index for the files in directory "
+         + dataDir.getPath());
+     } 
+}
+
+
+Query
+这是一个抽象类，他有多个实现，比如 TermQuery, BooleanQuery, PrefixQuery. 这个类的目的是把用户输入的查询字符串封装成 Lucene 能够识别的 Query。
+Term
+Term 是搜索的基本单位，一个 Term 对象有两个 String 类型的域组成。生成一个 Term 对象可以有如下一条语句来完成：Term term = new Term(“fieldName”,”queryWord”); 其中第一个参数代表了要在文档的哪一个 Field 上进行查找，第二个参数代表了要查询的关键词。
+TermQuery
+TermQuery 是抽象类 Query 的一个子类，它同时也是 Lucene 支持的最为基本的一个查询类。生成一个 TermQuery 对象由如下语句完成： TermQuery termQuery = new TermQuery(new Term(“fieldName”,”queryWord”)); 它的构造函数只接受一个参数，那就是一个 Term 对象。
+IndexSearcher
+IndexSearcher 是用来在建立好的索引上进行搜索的。它只能以只读的方式打开一个索引，所以可以有多个 IndexSearcher 的实例在一个索引上进行操作
+TopDocs 
+ 是用来保存搜索的结果的
+
+Fields 
+Lucene支持多字段数据，当你在查询的时候你可以指定一个字段查询，也可以使用默认的字段。你可以使用 字段名 + “：” + 查询词来指定字段名搜索。举个例子，让我们假定Lucene的索引中含有两个字段，Title字段和Text字段，其中Text字段是默认字段，当你想找 到一篇文档其中标题包含“The Right Way”同时文本中包含“go”，你可以输入：
+title:"The Right Way" AND text:go 
+或者：
+title:" The Right Way " AND go 
+如果字段是默认字段的话，在查询语法中可以不需要显式指定。注意，使用默认字段有可能会造成如下的结果：
+title:Do it right 
+以上查询将查找标题中含有“Do”，Text字段字段中含有“it”和“right”的文档，因为Text是默认字段，所以如果想要查找Title中完整包含的很用引号引起来
+
+Lucene version 3.6
+package com.roncoo.example.lucene;
+
+import java.io.File;
+import java.util.Date;
+
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.queryParser.QueryParser;
+import org.apache.lucene.search.Explanation;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.util.Version; 
+/** 
+* This class is used to demonstrate the 
+* process of searching on an existing 
+* Lucene index 
+* 
+*/ 
+public class TxtFileSearcher { 
+    public static void main(String[] args) throws Exception{ 
+       long startTime = new Date().getTime(); 
+       String queryStr = "d*"; 
+       //String queryStr = "lucene AND fileType : log"; 
+       Analyzer analyzer = new StandardAnalyzer(Version.LUCENE_35);
+       Query luceneQuery = new QueryParser(Version.LUCENE_35, "fileName", analyzer).parse(queryStr);
+       //This is the directory that hosts the Lucene index 
+       File indexDir = new File("D:\\lucene\\luceneIndex"); 
+       //用于搜索IndexWriter创建的索引  
+       IndexReader ir = IndexReader.open(FSDirectory.open(indexDir));  
+       IndexSearcher searcher = new IndexSearcher(ir);
+       if(!indexDir.exists()){ 
+            System.out.println("The Lucene index is not exist"); 
+            return; 
+       } 
+//       Term term = new Term("path", queryStr.toLowerCase()); 
+//       Term term1 = new Term("filename", queryStr.toLowerCase());
+//       TermQuery luceneQuery = new TermQuery(term); 
+       TopDocs rs = searcher.search(luceneQuery, null, 10);
+       for(int i = 0; i < rs.scoreDocs.length; i++){ 
+            Document document = searcher.doc(rs.scoreDocs[i].doc); 
+            System.out.println("path: " + document.get("path"));
+            System.out.println("contents: " + document.get("contents"));
+            System.out.println("authority: " + document.get("authority"));
+            System.out.println("fileName: " + document.get("fileName"));
+            System.out.println("fileName1: " + document.get("fileName1"));
+            System.out.println("fileType: " + document.get("fileType"));
+            Explanation explanation = searcher.explain(luceneQuery, rs.scoreDocs[i].doc);  
+            System.out.println("------------");  
+            System.out.println(explanation.toString()); 
+       } 
+       long endTime = new Date().getTime(); 
+       
+       System.out.println("It takes " + (endTime - startTime) 
+           + " milliseconds to search ");
+    } 
+}
+
+Wildcard Searches
+Lucene supports single and multiple character wildcard searches within single terms (not within phrase queries).
+
+To perform a single character wildcard search use the "?" symbol.
+
+To perform a multiple character wildcard search use the "*" symbol.
+
+The single character wildcard search looks for terms that match that with the single character replaced. For example, to search for "text" or "test" you can use the search:
+
+te?t
+Multiple character wildcard searches looks for 0 or more characters. For example, to search for test, tests or tester, you can use the search:
+
+test*
+You can also use the wildcard searches in the middle of a term.
+
+te*t
+Note: You cannot use a * or ? symbol as the first character of a search.
+
